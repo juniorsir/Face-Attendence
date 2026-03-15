@@ -179,3 +179,55 @@ def get_attendance(
         query = query.filter(Attendance.date <= datetime.strptime(end_date, "%Y-%m-%d").date())
 
     return query.order_by(Attendance.date.desc()).all()
+
+@app.get("/attendance", response_model=List[AttendanceResponse])
+def get_attendance(
+    employee_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    # Base query
+    query = db.query(Attendance)
+
+    # Apply filters if provided
+    if employee_id:
+        query = query.filter(Attendance.employee_id == employee_id)
+    if start_date:
+        query = query.filter(Attendance.date >= datetime.strptime(start_date, "%Y-%m-%d").date())
+    if end_date:
+        query = query.filter(Attendance.date <= datetime.strptime(end_date, "%Y-%m-%d").date())
+
+    # Get records from database
+    records = query.order_by(Attendance.date.desc()).all()
+
+    response_data = []
+
+    # Calculate Total Work Time for each record
+    for r in records:
+        work_time = None
+        
+        # Only calculate if employee has marked both entry and exit
+        if r.entry_time and r.exit_time:
+            duration = r.exit_time - r.entry_time
+            total_seconds = int(duration.total_seconds())
+            
+            # Convert seconds to Hours and Minutes
+            hours, remainder = divmod(total_seconds, 3600)
+            minutes, _ = divmod(remainder, 60)
+            
+            work_time = f"{hours}h {minutes}m"
+        elif r.entry_time and not r.exit_time:
+            work_time = "Shift in progress (No exit marked)"
+
+        response_data.append({
+            "employee_id": r.employee_id,
+            "date": r.date,
+            "entry_time": r.entry_time,
+            "exit_time": r.exit_time,
+            "shift_type": r.shift_type,
+            "shift_status": r.shift_status,
+            "total_work_time": work_time  # Append calculated time
+        })
+
+    return response_data
