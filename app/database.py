@@ -1,16 +1,21 @@
 import os
+import urllib.parse
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 # Fetch database credentials from environment variables
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_USER = os.getenv("DB_USER", "root")
+# Supporting both your specific names (DB_USERNAME) and default ones
+DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
+DB_USER = os.getenv("DB_USERNAME", os.getenv("DB_USER", "root"))
 DB_PASSWORD = os.getenv("DB_PASSWORD", "")
-DB_NAME = os.getenv("DB_NAME", "attendance_db")
+DB_NAME = os.getenv("DB_DATABASE", os.getenv("DB_NAME", "attendance_db"))
 DB_PORT = os.getenv("DB_PORT", "3306")
 
-# MySQL Connection URL (compatible with phpMyAdmin)
-SQLALCHEMY_DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+# CRITICAL FIX: URL-encode the password so the '@' symbol doesn't break SQLAlchemy
+encoded_password = urllib.parse.quote_plus(DB_PASSWORD)
+
+# MySQL Connection URL
+SQLALCHEMY_DATABASE_URL = f"mysql+pymysql://{DB_USER}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 # Engine setup
 engine = create_engine(
