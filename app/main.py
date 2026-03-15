@@ -17,6 +17,8 @@ from app.attendance_logic import get_current_time_and_shift
 
 # Create tables if they don't exist
 Base.metadata.create_all(bind=engine)
+
+app = FastAPI(title="Face Recognition Attendance API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], # Allows any HTML file to test the API
@@ -24,8 +26,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app = FastAPI(title="Face Recognition Attendance API")
-
 @app.on_event("startup")
 def on_startup():
     # Load all face encodings into RAM on startup for fast matching
