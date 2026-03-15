@@ -1,19 +1,10 @@
 services:
   - type: web
     name: face-recognition-attendance
-    env: python
-    region: frankfurt
+    env: docker # Changed from 'python' to 'docker'
+    region: frankfurt # You can change this to your preferred region
     plan: free
-    # Installing cmake first prevents dlib build failures
-    buildCommand: "pip install --upgrade pip && pip install cmake numpy<2.0.0 && pip install -r requirements.txt"
-    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
     envVars:
-      - key: PYTHON_VERSION
-        value: "3.10.13" 
-      - key: PIP_NO_CACHE_DIR
-        value: "1"
-      - key: CMAKE_BUILD_PARALLEL_LEVEL
-        value: "1" # CRUCIAL: Prevents RAM Out-Of-Memory crash during dlib compilation
       - key: DB_HOST
         sync: false
       - key: DB_USER
