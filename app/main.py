@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 from app.database import engine, Base, get_db
 from app.models import Employee, Attendance
+from fastapi.middleware.cors import CORSMiddleware
 from app.schemas import AttendanceResponse, SuccessResponse
 from app.face_utils import (
     process_image_and_get_encoding, 
@@ -16,7 +17,13 @@ from app.attendance_logic import get_current_time_and_shift
 
 # Create tables if they don't exist
 Base.metadata.create_all(bind=engine)
-
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # Allows any HTML file to test the API
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app = FastAPI(title="Face Recognition Attendance API")
 
 @app.on_event("startup")
