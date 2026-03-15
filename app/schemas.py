@@ -9,6 +9,7 @@ class AttendanceResponse(BaseModel):
     exit_time: Optional[datetime]
     shift_type: str
     shift_status: str
+    total_work_time: Optional[str] = None  # NEW: Added field for total work duration
 
     class Config:
         from_attributes = True
