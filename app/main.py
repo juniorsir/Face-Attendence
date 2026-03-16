@@ -125,20 +125,25 @@ async def register_face(
         image_bytes = await image.read()
         encoding = process_image_and_get_encoding(image_bytes)
 
-        # 3. Check for Duplicate Physical Faces in the Cache
+        # 3. Check for Duplicate Physical Faces in the Cache (WITH AUTO-HEALING LOOP)
         duplicate_id = check_duplicate_face(encoding)
-        if duplicate_id:
-            # CROSS-CHECK: Did an admin delete this ID from phpMyAdmin?
+        
+        while duplicate_id:
+            # Check if this "duplicate" actually still exists in the Database
             still_in_db = db.query(FaceRegistration).filter(FaceRegistration.employee_id == duplicate_id).first()
+            
             if not still_in_db:
-                # Yes, it was deleted from DB but stuck in RAM. Clean it up!
+                # 👻 GHOST FOUND! It was deleted in phpMyAdmin but is stuck in RAM.
                 remove_from_cache(duplicate_id)
-                log_debug("API_Register", f"Cleared stale cache for manually deleted ID: {duplicate_id}")
+                print(f"🧹 Cleaned up deleted ghost ID from RAM cache: {duplicate_id}")
+                
+                # Check again to ensure there are no other ghosts of this face
+                duplicate_id = check_duplicate_face(encoding)
             else:
-                # Truly a duplicate! Block them.
+                # Real duplicate found in the database. Block registration.
                 raise HTTPException(
                     status_code=400, 
-                    detail=f"Security Alert: This physical face is already registered in the system under Employee ID '{duplicate_id}'. Registration denied."
+                    detail=f"Security Alert: This physical face is already registered in the system under Employee ID '{duplicate_id}'."
                 )
             
         # 4. Save to Database
