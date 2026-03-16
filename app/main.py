@@ -31,12 +31,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Replace your current ExistingEmployee class with this one:
 class ExistingEmployee(Base):
     __tablename__ = 'employees'
-    __table_args__ = {'info': dict(is_existing=True)} # Prevents SQLAlchemy from managing this table
+    __table_args__ = {'info': dict(is_existing=True)}
 
     id = Column(Integer, primary_key=True)
     employee_id = Column(String(255), unique=True)
+    employee_name = Column(String(100)) # We pull this automatically now
+    shift = Column(String(50))          # We pull their assigned shift automatically now
     
 def auto_upgrade_database():
     """Automatically patches the database if older tables are missing new columns."""
@@ -110,17 +113,16 @@ def health_check(db: Session = Depends(get_db)):
 @app.post("/register-face", response_model=SuccessResponse)
 async def register_face(
     employee_id: str = Form(...),
-    employee_name: str = Form(...),
     image: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
     try:
         hr_employee = db.query(ExistingEmployee).filter(ExistingEmployee.employee_id == employee_id).first()
         if not hr_employee:
-            raise HTTPException(
-                status_code=404,  # 404 Not Found is more appropriate here
-                detail=f"Employee with ID '{employee_id}' not found in the HR system. Cannot register face."
-            )
+            raise HTTPException(status_code=404, detail=f"Employee ID '{employee_id}' not found in HR system.")
+        
+        # Get their real name from the database!
+        fetched_employee_name = hr_employee.employee_name or "Unknown Name"
             
         existing_face = db.query(FaceRegistration).filter(FaceRegistration.employee_id == employee_id).first()
         if existing_face:
@@ -128,13 +130,20 @@ async def register_face(
 
         image_bytes = await image.read()
         encoding = process_image_and_get_encoding(image_bytes)
-        
+
+        duplicate_id = check_duplicate_face(encoding)
+        if duplicate_id:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Security Alert: This physical face is already registered in the system under Employee ID '{duplicate_id}'. Registration denied."
+            )
+            
         encoding_list = encoding.tolist()
         encoding_json = json.dumps(encoding_list)
 
         new_face_record = FaceRegistration(
             employee_id=employee_id,
-            employee_name=employee_name,
+            employee_name=fetched_employee_name,
             face_encoding=encoding_json
         )
         db.add(new_face_record)
@@ -159,8 +168,16 @@ async def mark_entry(
         image_bytes = await image.read()
         matched_employee_id = recognize_face(image_bytes, threshold=0.5)
 
-        now, logical_date, shift_type, shift_status = get_current_time_and_shift(db)
+        hr_employee = db.query(ExistingEmployee).filter(ExistingEmployee.employee_id == matched_employee_id).first()
+        
+        if not hr_employee or not hr_employee.shift:
+            raise HTTPException(status_code=400, detail=f"HR Error: No shift assigned to employee {matched_employee_id} in the main database.")
+        
+        assigned_shift = hr_employee.shift # Gets 'Day' or 'Night'
 
+        # Calculate time based on THEIR shift
+        now, logical_date, shift_type, shift_status = get_current_time_and_shift(db, assigned_shift)
+        
         existing_attendance = db.query(Attendance).filter(
             Attendance.employee_id == matched_employee_id,
             Attendance.date == logical_date
@@ -202,7 +219,15 @@ async def mark_exit(
         image_bytes = await image.read()
         matched_employee_id = recognize_face(image_bytes, threshold=0.5)
 
-        now, logical_date, _, _ = get_current_time_and_shift(db)
+        hr_employee = db.query(ExistingEmployee).filter(ExistingEmployee.employee_id == matched_employee_id).first()
+        
+        if not hr_employee or not hr_employee.shift:
+            raise HTTPException(status_code=400, detail=f"HR Error: No shift assigned to employee {matched_employee_id} in the main database.")
+        
+        assigned_shift = hr_employee.shift # Gets 'Day' or 'Night'
+
+        # Calculate time based on THEIR shift
+        now, logical_date, shift_type, shift_status = get_current_time_and_shift(db, assigned_shift)
 
         attendance_record = db.query(Attendance).filter(
             Attendance.employee_id == matched_employee_id,
