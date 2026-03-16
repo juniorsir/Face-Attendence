@@ -1,11 +1,13 @@
 import json
 from typing import List, Optional
 from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+from sqlalchemy import inspect, text
 from datetime import datetime, time
+
 from app.database import engine, Base, get_db, SessionLocal
 from app.models import Employee, Attendance, ShiftConfig
-from fastapi.middleware.cors import CORSMiddleware
 from app.schemas import AttendanceResponse, SuccessResponse
 from app.face_utils import (
     process_image_and_get_encoding, 
@@ -15,37 +17,82 @@ from app.face_utils import (
 )
 from app.attendance_logic import get_current_time_and_shift
 
+# Automatically create tables if they DO NOT exist
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Face Recognition Attendance API")
+
+# Enable CORS for HTML testing
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+def auto_upgrade_database():
+    """Automatically patches the database if older tables are missing new columns."""
+    inspector = inspect(engine)
+    
+    # Check if the employees table exists
+    if inspector.has_table("employees"):
+        columns = [col['name'] for col in inspector.get_columns("employees")]
+        
+        # If employee_name is missing, add it automatically
+        if "employee_name" not in columns:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE employees ADD COLUMN employee_name VARCHAR(100) DEFAULT 'Unknown' AFTER employee_id"))
+                conn.commit()
+                print("✅ Automatically added missing 'employee_name' column to database.")
+
 @app.on_event("startup")
 def on_startup():
-    load_encodings_to_cache()
-    
+    # 1. Automatically fix database schemas if needed (No manual DB changes required)
+    auto_upgrade_database()
+
+    # 2. Insert default Shifts if they don't exist
     db = SessionLocal()
     try:
         if db.query(ShiftConfig).count() == 0:
             default_shifts = [
-                
                 ShiftConfig(shift_name="Day", start_time=time(10, 0), end_time=time(18, 0), half_day_late_minutes=15, absent_late_minutes=120),
-                 
                 ShiftConfig(shift_name="Night", start_time=time(19, 30), end_time=time(4, 30), half_day_late_minutes=15, absent_late_minutes=120),
-                
                 ShiftConfig(shift_name="Custom", start_time=time(14, 0), end_time=time(22, 0), half_day_late_minutes=15, absent_late_minutes=120)
             ]
             db.add_all(default_shifts)
             db.commit()
-            print("Successfully inserted Day, Night, and Custom shifts into database.")
+            print("✅ Successfully inserted Day, Night, and Custom shifts into database.")
+    except Exception as e:
+        print(f"Error checking shifts: {e}")
     finally:
         db.close()
 
+    # 3. Load faces into memory
+    load_encodings_to_cache()
+
+
+# -----------------------------------------
+# NEW: Health Endpoint
+# -----------------------------------------
+@app.get("/health")
+def health_check(db: Session = Depends(get_db)):
+    """Check if the API is running and connected to the database."""
+    try:
+        # Run a simple query to ensure the database is actively responding
+        db.execute(text("SELECT 1"))
+        return {
+            "status": "online",
+            "database": "connected",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=503, detail="Database connection failed")
+
+
+# -----------------------------------------
+# Existing Endpoints
+# -----------------------------------------
 @app.post("/register-face", response_model=SuccessResponse)
 async def register_face(
     employee_id: str = Form(...),
@@ -54,14 +101,13 @@ async def register_face(
     db: Session = Depends(get_db)
 ):
     try:
- 
         existing_emp = db.query(Employee).filter(Employee.employee_id == employee_id).first()
         if existing_emp:
             raise HTTPException(status_code=400, detail="Employee ID already registered.")
 
         image_bytes = await image.read()
         encoding = process_image_and_get_encoding(image_bytes)
-)
+        
         encoding_list = encoding.tolist()
         encoding_json = json.dumps(encoding_list)
 
@@ -89,11 +135,10 @@ async def mark_entry(
     db: Session = Depends(get_db)
 ):
     try:
-        # Match Face
         image_bytes = await image.read()
         matched_employee_id = recognize_face(image_bytes, threshold=0.5)
 
-        now, logical_date, shift_type, shift_status = get_current_time_and_shift()
+        now, logical_date, shift_type, shift_status = get_current_time_and_shift(db)
 
         existing_attendance = db.query(Attendance).filter(
             Attendance.employee_id == matched_employee_id,
@@ -116,11 +161,7 @@ async def mark_entry(
         return {
             "status": "success", 
             "message": f"Entry marked for {matched_employee_id}",
-            "data": {
-                "shift": shift_type,
-                "status": shift_status,
-                "entry_time": str(now)
-            }
+            "data": {"shift": shift_type, "status": shift_status, "entry_time": str(now)}
         }
 
     except ValueError as ve:
@@ -137,12 +178,10 @@ async def mark_exit(
     db: Session = Depends(get_db)
 ):
     try:
-        # Match Face
         image_bytes = await image.read()
         matched_employee_id = recognize_face(image_bytes, threshold=0.5)
 
-
-        now, logical_date, shift_type, shift_status = get_current_time_and_shift(db)
+        now, logical_date, _, _ = get_current_time_and_shift(db)
 
         attendance_record = db.query(Attendance).filter(
             Attendance.employee_id == matched_employee_id,
@@ -152,7 +191,6 @@ async def mark_exit(
         if not attendance_record:
             raise HTTPException(status_code=400, detail="No entry record found for today. Cannot mark exit.")
 
-        # Update Exit Time
         attendance_record.exit_time = now
         db.commit()
 
@@ -186,47 +224,21 @@ def get_attendance(
     if end_date:
         query = query.filter(Attendance.date <= datetime.strptime(end_date, "%Y-%m-%d").date())
 
-    return query.order_by(Attendance.date.desc()).all()
-
-@app.get("/attendance", response_model=List[AttendanceResponse])
-def get_attendance(
-    employee_id: Optional[str] = None,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    db: Session = Depends(get_db)
-):
-    query = db.query(Attendance)
-
-    if employee_id:
-        query = query.filter(Attendance.employee_id == employee_id)
-    if start_date:
-        query = query.filter(Attendance.date >= datetime.strptime(start_date, "%Y-%m-%d").date())
-    if end_date:
-        query = query.filter(Attendance.date <= datetime.strptime(end_date, "%Y-%m-%d").date())
-
-    # 1. Get records from DB (Notice we DO NOT return here!)
     records = query.order_by(Attendance.date.desc()).all()
-
     response_data = []
 
-    # 2. Loop through and do the math for every record
     for r in records:
         work_time = None
         
         if r.entry_time and r.exit_time:
-            # Math: Exit Time minus Entry Time
             duration = r.exit_time - r.entry_time
             total_seconds = int(duration.total_seconds())
-            
             hours, remainder = divmod(total_seconds, 3600)
             minutes, _ = divmod(remainder, 60)
-            
             work_time = f"{hours}h {minutes}m"
-            
         elif r.entry_time and not r.exit_time:
             work_time = "Shift in progress (No exit marked)"
 
-        # 3. Add the calculated data to our list
         response_data.append({
             "employee_id": r.employee_id,
             "date": r.date,
@@ -237,5 +249,4 @@ def get_attendance(
             "total_work_time": work_time
         })
 
-    # 4. Return the newly calculated list at the VERY END
     return response_data
