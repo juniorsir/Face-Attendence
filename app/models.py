@@ -5,8 +5,7 @@ from app.database import Base
 # 1. Official HR Employees Table (Read-Only)
 class ExistingEmployee(Base):
     __tablename__ = 'employees'
-    __table_args__ = {'info': dict(is_existing=True)} 
-
+    __table_args__ = {'extend_existing': True, 'info': dict(is_existing=True)}
     id = Column(Integer, primary_key=True)
     employee_id = Column(String(255), unique=True)
     first_name = Column(String(255))
