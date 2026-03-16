@@ -56,8 +56,3 @@ def get_db():
         yield db
     finally:
         db.close()
-
-def log_debug(message):
-    """Prints logs only if DEBUG_MODE is set to 'true'."""
-    if os.getenv("DEBUG_MODE", "false").lower() == "true":
-        print(f"DEBUG [ {datetime.now().strftime('%H:%M:%S')} ]: {message}")
