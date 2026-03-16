@@ -44,7 +44,7 @@ def evaluate_entry(assigned_shift: str):
     minutes_diff = (now - expected_start).total_seconds() / 60.0
 
     # 4. Check EARLY CHECK-IN Rule (More than 10 mins early)
-    if minutes_diff < -10:
+    if minutes_diff < -2:
         early_time_str = (expected_start - timedelta(minutes=10)).strftime("%I:%M %p")
         raise Exception(f"TOO_EARLY|Too early. Please come after {early_time_str} to mark attendance.")
 
