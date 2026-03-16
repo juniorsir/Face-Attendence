@@ -5,15 +5,16 @@ from app.database import Base
 # 1. Official HR Employees Table (Read-Only)
 class ExistingEmployee(Base):
     __tablename__ = 'employees'
-    __table_args__ = {'extend_existing': True, 'info': dict(is_existing=True)}
+    __table_args__ = {'extend_existing': True}
+
     id = Column(Integer, primary_key=True)
     employee_id = Column(String(255), unique=True)
     first_name = Column(String(255))
     last_name = Column(String(255))
     shift = Column(String(50))
-    employee_status = Column(String(50)) # Added for validation
-    is_approved = Column(Integer)        # Added for validation (tinyint)
-
+    employee_status = Column(String(50))
+    is_approved = Column(Integer)
+    
 # 2. Our Face Recognition Table
 class FaceRegistration(Base):
     __tablename__ = "face_registrations"
