@@ -108,7 +108,7 @@ async def register_face(
     db: Session = Depends(get_db)
 ):
     try:
-        existing_emp = db.query(Employee).filter(Employee.employee_id == employee_id).first()
+        existing_emp = db.query(FaceRegistration).filter(FaceRegistration.employee_id == employee_id).first()
         if existing_emp:
             raise HTTPException(status_code=400, detail="Employee ID already registered.")
 
@@ -118,7 +118,7 @@ async def register_face(
         encoding_list = encoding.tolist()
         encoding_json = json.dumps(encoding_list)
 
-        new_employee = Employee(
+        new_employee = FaceRegistration(
             employee_id=employee_id,
             employee_name=employee_name,
             face_encoding=encoding_json
