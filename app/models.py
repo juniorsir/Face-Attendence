@@ -24,6 +24,21 @@ class FaceRegistration(Base):
     face_encoding = Column(Text, nullable=False) 
     created_at = Column(DateTime, default=datetime.utcnow)
 
+class ShiftConfig(Base):
+    __tablename__ = "shift_configs"
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # E.g., 'Day' or 'Night'
+    shift_name = Column(String(50), unique=True, nullable=False) 
+    
+    # Official Start/End times
+    start_time = Column(Time, nullable=False) 
+    end_time = Column(Time, nullable=False)
+    
+    # Rules
+    half_day_late_minutes = Column(Integer, default=15) 
+    absent_late_minutes = Column(Integer, default=120)
+    
 # 3. NEW: Attendance Logs Table (Replacing the old basic attendance table)
 class AttendanceLog(Base):
     __tablename__ = "attendance_logs"
