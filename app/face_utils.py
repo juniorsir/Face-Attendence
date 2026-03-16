@@ -3,7 +3,7 @@ import numpy as np
 import face_recognition
 import json
 from app.database import SessionLocal
-from app.models import Employee
+from app.models import FaceRegistration
 
 # In-memory Cache for Face Encodings to save DB calls and improve speed
 ENCODINGS_CACHE = {}
@@ -12,7 +12,7 @@ def load_encodings_to_cache():
     """Loads all valid face encodings from database into memory on startup."""
     db = SessionLocal()
     try:
-        employees = db.query(Employee).all()
+        employees = db.query(FaceRegistration).all()
         for emp in employees:
             # Skip old/corrupted records that don't have a face encoding
             if not emp.face_encoding:
