@@ -2,14 +2,6 @@ from sqlalchemy import Column, Integer, String, Text, DateTime, Date, Time
 from datetime import datetime
 from app.database import Base
 
-class Employee(Base):
-    __tablename__ = "employees"
-    id = Column(Integer, primary_key=True, index=True)
-    employee_id = Column(String(50), unique=True, index=True, nullable=False)
-    employee_name = Column(String(100), nullable=False)
-    face_encoding = Column(Text, nullable=False) 
-    created_at = Column(DateTime, default=datetime.utcnow)
-
 class Attendance(Base):
     __tablename__ = "attendance"
     id = Column(Integer, primary_key=True, index=True)
