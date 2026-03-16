@@ -3,7 +3,7 @@ from typing import List, Optional
 from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from sqlalchemy import inspect, text, Column, String 
+from sqlalchemy import inspect, text, Column, String, Integer
 from datetime import datetime, time
 
 from app.database import engine, Base, get_db, SessionLocal
