@@ -2,9 +2,9 @@ import json
 from typing import List, Optional
 from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from datetime import datetime
-from app.database import engine, Base, get_db
-from app.models import Employee, Attendance
+from datetime import datetime, time
+from app.database import engine, Base, get_db, SessionLocal
+from app.models import Employee, Attendance, ShiftConfig
 from fastapi.middleware.cors import CORSMiddleware
 from app.schemas import AttendanceResponse, SuccessResponse
 from app.face_utils import (
@@ -15,21 +15,36 @@ from app.face_utils import (
 )
 from app.attendance_logic import get_current_time_and_shift
 
-# Create tables if they don't exist
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Face Recognition Attendance API")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Allows any HTML file to test the API
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 @app.on_event("startup")
 def on_startup():
-    # Load all face encodings into RAM on startup for fast matching
     load_encodings_to_cache()
+    
+    db = SessionLocal()
+    try:
+        if db.query(ShiftConfig).count() == 0:
+            default_shifts = [
+                
+                ShiftConfig(shift_name="Day", start_time=time(10, 0), end_time=time(18, 0), half_day_late_minutes=15, absent_late_minutes=120),
+                 
+                ShiftConfig(shift_name="Night", start_time=time(19, 30), end_time=time(4, 30), half_day_late_minutes=15, absent_late_minutes=120),
+                
+                ShiftConfig(shift_name="Custom", start_time=time(14, 0), end_time=time(22, 0), half_day_late_minutes=15, absent_late_minutes=120)
+            ]
+            db.add_all(default_shifts)
+            db.commit()
+            print("Successfully inserted Day, Night, and Custom shifts into database.")
+    finally:
+        db.close()
 
 @app.post("/register-face", response_model=SuccessResponse)
 async def register_face(
@@ -39,16 +54,14 @@ async def register_face(
     db: Session = Depends(get_db)
 ):
     try:
-        # Check if employee already exists
+ 
         existing_emp = db.query(Employee).filter(Employee.employee_id == employee_id).first()
         if existing_emp:
             raise HTTPException(status_code=400, detail="Employee ID already registered.")
 
-        # Process image and get encoding
         image_bytes = await image.read()
         encoding = process_image_and_get_encoding(image_bytes)
-        
-        # Save to DB (Store as JSON string)
+)
         encoding_list = encoding.tolist()
         encoding_json = json.dumps(encoding_list)
 
@@ -60,7 +73,6 @@ async def register_face(
         db.add(new_employee)
         db.commit()
 
-        # Update cache dynamically
         add_to_cache(employee_id, encoding)
 
         return {"status": "success", "message": f"Employee {employee_name} registered successfully."}
@@ -81,10 +93,8 @@ async def mark_entry(
         image_bytes = await image.read()
         matched_employee_id = recognize_face(image_bytes, threshold=0.5)
 
-        # Determine Shift and Late logic
         now, logical_date, shift_type, shift_status = get_current_time_and_shift()
 
-        # Check if already checked in for this logical date
         existing_attendance = db.query(Attendance).filter(
             Attendance.employee_id == matched_employee_id,
             Attendance.date == logical_date
@@ -93,7 +103,6 @@ async def mark_entry(
         if existing_attendance:
             raise HTTPException(status_code=400, detail=f"Entry already marked for {matched_employee_id} today.")
 
-        # Mark Attendance
         new_attendance = Attendance(
             employee_id=matched_employee_id,
             date=logical_date,
@@ -132,10 +141,9 @@ async def mark_exit(
         image_bytes = await image.read()
         matched_employee_id = recognize_face(image_bytes, threshold=0.5)
 
-        # Get Current time logic
+
         now, logical_date, _, _ = get_current_time_and_shift()
 
-        # Find today's entry record
         attendance_record = db.query(Attendance).filter(
             Attendance.employee_id == matched_employee_id,
             Attendance.date == logical_date
