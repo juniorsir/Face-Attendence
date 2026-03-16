@@ -35,21 +35,20 @@ def auto_upgrade_database():
     """Automatically patches the database if older tables are missing new columns."""
     inspector = inspect(engine)
     
-    # Check if the employees table exists
-    if inspector.has_table("employees"):
-        columns = [col['name'] for col in inspector.get_columns("employees")]
+    # Check if the face_registrations table exists (NOT employees)
+    if inspector.has_table("face_registrations"):
+        columns = [col['name'] for col in inspector.get_columns("face_registrations")]
         
         with engine.connect() as conn:
             # 1. Check for missing employee_name
             if "employee_name" not in columns:
-                conn.execute(text("ALTER TABLE employees ADD COLUMN employee_name VARCHAR(100) DEFAULT 'Unknown' AFTER employee_id"))
+                conn.execute(text("ALTER TABLE face_registrations ADD COLUMN employee_name VARCHAR(100) DEFAULT 'Unknown'"))
                 conn.commit()
                 print("✅ Automatically added missing 'employee_name' column to database.")
             
             # 2. Check for missing face_encoding
             if "face_encoding" not in columns:
-                # We use TEXT because the face encoding is a long JSON array of 128 numbers
-                conn.execute(text("ALTER TABLE employees ADD COLUMN face_encoding TEXT"))
+                conn.execute(text("ALTER TABLE face_registrations ADD COLUMN face_encoding TEXT"))
                 conn.commit()
                 print("✅ Automatically added missing 'face_encoding' column to database.")
 
