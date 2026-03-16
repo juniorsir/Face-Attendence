@@ -20,6 +20,16 @@ class Attendance(Base):
     shift_type = Column(String(50), nullable=False)   
     shift_status = Column(String(50), nullable=False) 
 
+
+class FaceRegistration(Base):
+    __tablename__ = "face_registrations" # The new, safe table name
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(String(50), unique=True, index=True, nullable=False)
+    employee_name = Column(String(100), nullable=False)
+    face_encoding = Column(Text, nullable=False) 
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
 # NEW: Dynamic Shift Configurations Table
 class ShiftConfig(Base):
     __tablename__ = "shift_configs"
