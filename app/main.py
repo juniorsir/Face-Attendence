@@ -3,7 +3,7 @@ from typing import List, Optional
 from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, text, Column, String 
 from datetime import datetime, time
 
 from app.database import engine, Base, get_db, SessionLocal
@@ -31,6 +31,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class ExistingEmployee(Base):
+    __tablename__ = 'employees'
+    __table_args__ = {'info': dict(is_existing=True)} # Prevents SQLAlchemy from managing this table
+
+    id = Column(Integer, primary_key=True)
+    employee_id = Column(String(255), unique=True)
+    
 def auto_upgrade_database():
     """Automatically patches the database if older tables are missing new columns."""
     inspector = inspect(engine)
@@ -108,9 +115,16 @@ async def register_face(
     db: Session = Depends(get_db)
 ):
     try:
-        existing_emp = db.query(FaceRegistration).filter(FaceRegistration.employee_id == employee_id).first()
-        if existing_emp:
-            raise HTTPException(status_code=400, detail="Employee ID already registered.")
+        hr_employee = db.query(ExistingEmployee).filter(ExistingEmployee.employee_id == employee_id).first()
+        if not hr_employee:
+            raise HTTPException(
+                status_code=404,  # 404 Not Found is more appropriate here
+                detail=f"Employee with ID '{employee_id}' not found in the HR system. Cannot register face."
+            )
+            
+        existing_face = db.query(FaceRegistration).filter(FaceRegistration.employee_id == employee_id).first()
+        if existing_face:
+            raise HTTPException(status_code=400, detail="A face has already been registered for this Employee ID.")
 
         image_bytes = await image.read()
         encoding = process_image_and_get_encoding(image_bytes)
@@ -118,12 +132,12 @@ async def register_face(
         encoding_list = encoding.tolist()
         encoding_json = json.dumps(encoding_list)
 
-        new_employee = FaceRegistration(
+        new_face_record = FaceRegistration(
             employee_id=employee_id,
             employee_name=employee_name,
             face_encoding=encoding_json
         )
-        db.add(new_employee)
+        db.add(new_face_record)
         db.commit()
 
         add_to_cache(employee_id, encoding)
