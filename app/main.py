@@ -13,7 +13,8 @@ from app.face_utils import (
     process_image_and_get_encoding, 
     recognize_face, 
     load_encodings_to_cache,
-    add_to_cache
+    add_to_cache,
+    check_duplicate_face
 )
 from app.attendance_logic import get_current_time_and_shift
 
