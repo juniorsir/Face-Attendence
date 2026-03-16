@@ -1,47 +1,84 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 import pytz
-from sqlalchemy.orm import Session
-from app.models import ShiftConfig
 
 TZ = pytz.timezone('Asia/Kolkata')
 
-def get_current_time_and_shift(db: Session, assigned_shift_name: str):
-    """
-    Calculates attendance status strictly based on the employee's HR-assigned shift.
-    This function no longer searches; it enforces a specific shift rule.
-    """
+# Strict Shift Definitions
+SHIFTS = {
+    'Day': {'start': time(10, 0), 'end': time(18, 0)},
+    'Night': {'start': time(19, 30), 'end': time(4, 30)}
+}
+
+def evaluate_entry(assigned_shift: str):
+    """Evaluates strict entry rules, early check-ins, and wrong shifts."""
     now = datetime.now(TZ)
     current_time = now.time()
-    
-    # Fetch ONLY the rules for the shift assigned to this employee by HR.
-    my_shift = db.query(ShiftConfig).filter(ShiftConfig.shift_name == assigned_shift_name).first()
-    
-    # If HR assigned a shift that doesn't have rules in our system, raise an error.
-    if not my_shift:
-        raise ValueError(f"Shift rules for '{assigned_shift_name}' not found in the 'shift_configs' table. Please add rules for this shift.")
 
-    # Determine the exact start datetime for their assigned shift.
-    shift_dt_today = now.replace(hour=my_shift.start_time.hour, minute=my_shift.start_time.minute, second=0, microsecond=0)
-    
-    # Handle Night Shift logic (checking in after midnight belongs to yesterday's shift).
-    if my_shift.start_time.hour >= 18 and current_time.hour < 12:
-        expected_start_dt = shift_dt_today - timedelta(days=1)
-        actual_logical_date = (now - timedelta(days=1)).date()
+    if assigned_shift not in SHIFTS:
+        raise ValueError(f"Invalid shift assignment: {assigned_shift}")
+
+    # 1. Define Dates and Shift Boundaries
+    if assigned_shift == 'Night':
+        # If checking in early morning (12am-12pm), it belongs to yesterday's night shift
+        if current_time.hour < 12:
+            logical_date = (now - timedelta(days=1)).date()
+            expected_start = now.replace(year=logical_date.year, month=logical_date.month, day=logical_date.day, hour=19, minute=30, second=0, microsecond=0)
+        else:
+            logical_date = now.date()
+            expected_start = now.replace(hour=19, minute=30, second=0, microsecond=0)
+    else: # Day
+        logical_date = now.date()
+        expected_start = now.replace(hour=10, minute=0, second=0, microsecond=0)
+
+    # 2. Check for WRONG SHIFT (Attempting to check in during the opposite shift's window)
+    if assigned_shift == 'Day':
+        # Night window is roughly 7:20 PM to 4:30 AM
+        if current_time >= time(19, 20) or current_time <= time(4, 30):
+            raise Exception(f"WRONG_SHIFT|{logical_date}|Attempted to check in during Night Shift window. Marked as absent.")
+    elif assigned_shift == 'Night':
+        # Day window is roughly 9:50 AM to 6:00 PM
+        if time(9, 50) <= current_time <= time(18, 0):
+            raise Exception(f"WRONG_SHIFT|{logical_date}|Attempted to check in during Day Shift window. Marked as absent.")
+
+    # 3. Calculate Minutes Difference (Negative = Early, Positive = Late)
+    minutes_diff = (now - expected_start).total_seconds() / 60.0
+
+    # 4. Check EARLY CHECK-IN Rule (More than 10 mins early)
+    if minutes_diff < -10:
+        early_time_str = (expected_start - timedelta(minutes=10)).strftime("%I:%M %p")
+        raise Exception(f"TOO_EARLY|Too early. Please come after {early_time_str} to mark attendance.")
+
+    # 5. Determine Check-In Status
+    if minutes_diff <= 0:
+        shift_status = "on_time"
+    elif minutes_diff <= 15:
+        shift_status = "late_but_full_shift"
     else:
-        expected_start_dt = shift_dt_today
-        actual_logical_date = now.date()
+        shift_status = "half_shift"
 
-    # Calculate lateness based on THEIR SPECIFIC shift start time.
-    minutes_late = (now - expected_start_dt).total_seconds() / 60.0
+    return now.replace(tzinfo=None), logical_date, shift_status
+
+
+def calculate_overtime(assigned_shift: str, logical_date, exit_dt: datetime):
+    """Calculates overtime after the official shift ends."""
+    if assigned_shift == 'Night':
+        expected_start = datetime(logical_date.year, logical_date.month, logical_date.day, 19, 30)
+        expected_end = expected_start + timedelta(hours=9) # 4:30 AM next day
+    else:
+        expected_end = datetime(logical_date.year, logical_date.month, logical_date.day, 18, 0)
+        
+    expected_end = TZ.localize(expected_end)
     
-    shift_status = "Full Shift"
-
-    # Apply the Absent/Late rules from the database for their specific shift.
-    if isinstance(my_shift.absent_late_minutes, int) and minutes_late >= my_shift.absent_late_minutes:
-        shift_status = "Absent"
-    elif isinstance(my_shift.half_day_late_minutes, int) and minutes_late >= my_shift.half_day_late_minutes:
-        shift_status = "Half Shift"
-
-    db_ready_now = now.replace(tzinfo=None)
-
-    return db_ready_now, actual_logical_date, my_shift.shift_name, shift_status
+    overtime_minutes = 0
+    overtime_hours_str = "0h 0m"
+    
+    # Calculate OT only if exit is after expected end time
+    if exit_dt > expected_end:
+        diff = exit_dt - expected_end
+        overtime_minutes = int(diff.total_seconds() / 60)
+        
+        # Convert to Hours and Minutes
+        h, m = divmod(overtime_minutes, 60)
+        overtime_hours_str = f"{h}h {m}m"
+        
+    return overtime_minutes, overtime_hours_str
