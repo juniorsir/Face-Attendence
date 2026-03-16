@@ -187,7 +187,8 @@ async def mark_entry(image: UploadFile = File(...), db: Session = Depends(get_db
                 assigned_shift, 
                 shift_config.start_time, 
                 shift_config.end_time,
-                shift_config.half_day_late_minutes
+                shift_config.half_day_late_minutes,
+                shift_config.absent_late_minutes
             )
         except Exception as logic_e:
             error_msg = str(logic_e)
