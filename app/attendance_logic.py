@@ -9,26 +9,24 @@ def get_current_time_and_shift(db: Session):
     """Dynamically finds the correct shift from the DB and calculates Full/Half/Absent status."""
     now = datetime.now(TZ)
     current_time = now.time()
-    logical_date = now.date()
     
     # Fetch all shift rules from the database
     shifts = db.query(ShiftConfig).all()
     
     if not shifts:
-        # Fallback just in case DB is empty
-        return now.replace(tzinfo=None), logical_date, "Unknown", "Full Shift"
+        # If the shift_configs table is empty, raise an error immediately.
+        raise ValueError("No shift configurations found in the database. Please add shifts via phpMyAdmin or restart the app.")
 
     best_shift = None
     smallest_diff = float('inf')
     expected_start_dt = None
-    actual_logical_date = logical_date
+    actual_logical_date = now.date()
 
-    # 1. Find which shift the employee is checking in for
+    # 1. Loop to find the closest shift to the current time
     for shift in shifts:
-        # Create a datetime object for today at this shift's start time
         shift_dt_today = now.replace(hour=shift.start_time.hour, minute=shift.start_time.minute, second=0, microsecond=0)
         
-        # Handle Night Shifts (Checking in past midnight belongs to yesterday's night shift)
+        # Handle Night Shifts (checking in early morning belongs to yesterday's shift)
         if shift.start_time.hour >= 18 and current_time.hour < 12:
             shift_dt_yesterday = shift_dt_today - timedelta(days=1)
             diff = abs((now - shift_dt_yesterday).total_seconds())
@@ -45,15 +43,21 @@ def get_current_time_and_shift(db: Session):
                 expected_start_dt = shift_dt_today
                 actual_logical_date = now.date()
 
+    # ------------------ THE CRUCIAL FIX IS HERE ------------------
+    # If after all that, we still didn't find a shift, it's a critical failure.
+    if not best_shift:
+        raise ValueError("Could not determine a suitable shift for the current time. Please check shift configurations.")
+    # -------------------------------------------------------------
+
     # 2. Calculate exactly how many minutes late they are
     minutes_late = (now - expected_start_dt).total_seconds() / 60.0
     
     # 3. Apply the dynamic rules from the Database!
     shift_status = "Full Shift"
     
-    if minutes_late >= best_shift.absent_late_minutes: # e.g., 120 mins (2 hours)
+    if minutes_late >= best_shift.absent_late_minutes:
         shift_status = "Absent"
-    elif minutes_late >= best_shift.half_day_late_minutes: # e.g., 15 mins
+    elif minutes_late >= best_shift.half_day_late_minutes:
         shift_status = "Half Shift"
 
     # Strip timezone for MySQL saving
