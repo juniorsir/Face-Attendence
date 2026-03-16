@@ -9,17 +9,27 @@ from app.models import Employee
 ENCODINGS_CACHE = {}
 
 def load_encodings_to_cache():
-    """Loads all face encodings from database into memory on startup."""
+    """Loads all valid face encodings from database into memory on startup."""
     db = SessionLocal()
     try:
         employees = db.query(Employee).all()
         for emp in employees:
-            # Convert JSON string back to numpy array
-            encoding_list = json.loads(emp.face_encoding)
-            ENCODINGS_CACHE[emp.employee_id] = np.array(encoding_list)
-        print(f"Loaded {len(ENCODINGS_CACHE)} face encodings into cache.")
+            # Skip old/corrupted records that don't have a face encoding
+            if not emp.face_encoding:
+                print(f"⚠️ Warning: Employee {emp.employee_id} has no face encoding. Skipping.")
+                continue
+                
+            try:
+                # Convert JSON string back to numpy array
+                encoding_list = json.loads(emp.face_encoding)
+                ENCODINGS_CACHE[emp.employee_id] = np.array(encoding_list)
+            except json.JSONDecodeError:
+                print(f"⚠️ Warning: Employee {emp.employee_id} has corrupted face data. Skipping.")
+                continue
+
+        print(f"✅ Loaded {len(ENCODINGS_CACHE)} valid face encodings into cache.")
     except Exception as e:
-        print(f"Error loading cache: {e}")
+        print(f"❌ Error loading cache: {e}")
     finally:
         db.close()
 
