@@ -158,9 +158,11 @@ async def mark_entry(image: UploadFile = File(...), db: Session = Depends(get_db
         image_bytes = await image.read()
         matched_employee_id = recognize_face(image_bytes, threshold=0.5)
 
-        # 1. Fetch & Validate Employee Status
+        # 1. Fetch Employee from Database
         log_debug("API_Entry", f"Querying HR database for ID: {matched_employee_id}")
         hr_emp = db.query(ExistingEmployee).filter(ExistingEmployee.employee_id == matched_employee_id).first()
+        
+        # Validate Employee Status
         if not hr_emp:
             log_debug("API_Entry", "HR DB Lookup Failed: Employee not found.")
             raise HTTPException(status_code=400, detail="Employee not found in HR system.")
@@ -174,9 +176,19 @@ async def mark_entry(image: UploadFile = File(...), db: Session = Depends(get_db
         log_debug("API_Entry", f"HR Data Found -> Status: {hr_emp.employee_status}, Approved: {hr_emp.is_approved}, Shift: {hr_emp.shift}")
         assigned_shift = hr_emp.shift
 
-        # 2. Evaluate Strict Entry Rules
+        # Fetch live shift timings from the database
+        shift_config = db.query(ShiftConfig).filter(ShiftConfig.shift_name == assigned_shift).first()
+        if not shift_config:
+            raise HTTPException(status_code=400, detail=f"Shift configuration for '{assigned_shift}' not found in database.")
+
+        # 2. Evaluate Strict Entry Rules using Database times
         try:
-            now, logical_date, shift_status = evaluate_entry(assigned_shift)
+            now, logical_date, shift_status = evaluate_entry(
+                assigned_shift, 
+                shift_config.start_time, 
+                shift_config.end_time,
+                shift_config.half_day_late_minutes
+            )
         except Exception as logic_e:
             error_msg = str(logic_e)
             
@@ -204,14 +216,21 @@ async def mark_entry(image: UploadFile = File(...), db: Session = Depends(get_db
                 raise logic_e
 
         # 3. Check for Duplicate Entry today
-        existing_log = db.query(AttendanceLog).filter(AttendanceLog.employee_id == matched_employee_id, AttendanceLog.date == logical_date).first()
+        existing_log = db.query(AttendanceLog).filter(
+            AttendanceLog.employee_id == matched_employee_id, 
+            AttendanceLog.date == logical_date
+        ).first()
+        
         if existing_log:
             raise HTTPException(status_code=400, detail=f"Entry already marked for {matched_employee_id} today.")
 
         # 4. Save Entry
         new_log = AttendanceLog(
-            employee_id=matched_employee_id, date=logical_date, entry_time=now,
-            shift_type=assigned_shift, shift_status=shift_status
+            employee_id=matched_employee_id, 
+            date=logical_date, 
+            entry_time=now,
+            shift_type=assigned_shift, 
+            shift_status=shift_status
         )
         db.add(new_log)
         db.commit()
@@ -225,26 +244,34 @@ async def mark_entry(image: UploadFile = File(...), db: Session = Depends(get_db
     except Exception as e:
         print(f"CRASH IN /entry: {str(e)}")
         raise HTTPException(status_code=500, detail=f"System Crash: {str(e)}")
-
-
+        
 @app.post("/attendance/exit", response_model=SuccessResponse)
 async def mark_exit(image: UploadFile = File(...), db: Session = Depends(get_db)):
     try:
         image_bytes = await image.read()
         matched_employee_id = recognize_face(image_bytes, threshold=0.5)
 
+        # 1. Fetch Employee from Database
         hr_emp = db.query(ExistingEmployee).filter(ExistingEmployee.employee_id == matched_employee_id).first()
         if not hr_emp or not hr_emp.shift:
             raise HTTPException(status_code=400, detail="HR Error: No shift assigned.")
 
-        # Get logical date based on current time
+        # 2. Fetch live shift timings from the database
+        shift_config = db.query(ShiftConfig).filter(ShiftConfig.shift_name == hr_emp.shift).first()
+        if not shift_config:
+            raise HTTPException(status_code=400, detail=f"HR Error: Shift configuration for '{hr_emp.shift}' not found.")
+
+        # 3. Get logical date based on dynamic database shift
         now = datetime.now(TZ)
-        if hr_emp.shift == 'Night' and now.time().hour < 12:
+        is_night_shift = shift_config.start_time > shift_config.end_time
+        
+        # If the shift crosses midnight, anyone exiting before noon belongs to yesterday's logical shift
+        if is_night_shift and now.time().hour < 12:
             logical_date = (now - timedelta(days=1)).date()
         else:
             logical_date = now.date()
 
-        # Find today's entry
+        # 4. Find today's entry
         attendance_log = db.query(AttendanceLog).filter(
             AttendanceLog.employee_id == matched_employee_id, AttendanceLog.date == logical_date
         ).first()
@@ -254,14 +281,17 @@ async def mark_exit(image: UploadFile = File(...), db: Session = Depends(get_db)
         if attendance_log.exit_time:
              raise HTTPException(status_code=400, detail="Exit already marked for today.")
 
-        # Overtime Calculation
-        ot_mins, ot_hours = calculate_overtime(hr_emp.shift, logical_date, now)
+        # 5. Overtime Calculation using database times
+        ot_mins, ot_hours = calculate_overtime(
+            hr_emp.shift, logical_date, now, 
+            shift_config.start_time, shift_config.end_time
+        )
         
         attendance_log.exit_time = now.replace(tzinfo=None)
         attendance_log.overtime_minutes = ot_mins
         attendance_log.overtime_hours = ot_hours
         
-        # Override status to "overtime" if they worked extra
+        # 6. Override status to "overtime" if they worked extra
         if ot_mins > 0:
             attendance_log.shift_status = "overtime"
 
@@ -276,7 +306,6 @@ async def mark_exit(image: UploadFile = File(...), db: Session = Depends(get_db)
     except Exception as e:
         print(f"CRASH IN /exit: {str(e)}")
         raise HTTPException(status_code=500, detail=f"System Crash: {str(e)}")
-
 
 @app.get("/attendance", response_model=List[AttendanceResponse])
 def get_attendance(employee_id: Optional[str] = None, start_date: Optional[str] = None, end_date: Optional[str] = None, db: Session = Depends(get_db)):
