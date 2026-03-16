@@ -7,7 +7,7 @@ from sqlalchemy import inspect, text, Column, String, Integer
 from datetime import datetime, time
 
 from app.database import engine, Base, get_db, SessionLocal
-from app.models import ExistingEmployee, FaceRegistration, AttendanceLog
+from app.models import ExistingEmployee, FaceRegistration, AttendanceLog, ShiftConfig
 from app.schemas import AttendanceResponse, SuccessResponse
 from app.face_utils import (
     process_image_and_get_encoding, 
