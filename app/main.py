@@ -178,9 +178,12 @@ async def mark_entry(
         hr_employee = db.query(ExistingEmployee).filter(ExistingEmployee.employee_id == matched_employee_id).first()
         
         if not hr_employee or not hr_employee.shift:
-            raise HTTPException(status_code=400, detail=f"HR Error: No shift assigned to employee {matched_employee_id} in the main database.")
+            raise HTTPException(
+                status_code=400, 
+                detail=f"HR Error: No shift assigned to employee {matched_employee_id} in the main 'employees' database table."
+            )
         
-        assigned_shift = hr_employee.shift # Gets 'Day' or 'Night'
+        assigned_shift = hr_employee.shift # This will be "Day" or "Night"
 
         # Calculate time based on THEIR shift
         now, logical_date, shift_type, shift_status = get_current_time_and_shift(db, assigned_shift)
@@ -228,15 +231,13 @@ async def mark_exit(
         matched_employee_id = recognize_face(image_bytes, threshold=0.5)
 
         hr_employee = db.query(ExistingEmployee).filter(ExistingEmployee.employee_id == matched_employee_id).first()
-        
         if not hr_employee or not hr_employee.shift:
-            raise HTTPException(status_code=400, detail=f"HR Error: No shift assigned to employee {matched_employee_id} in the main database.")
-        
-        assigned_shift = hr_employee.shift # Gets 'Day' or 'Night'
-
-        # Calculate time based on THEIR shift
-        now, logical_date, shift_type, shift_status = get_current_time_and_shift(db, assigned_shift)
-
+            raise HTTPException(
+                status_code=400,
+                detail=f"HR Error: No shift assigned to employee {matched_employee_id} in the main 'employees' database table."
+            )
+        assigned_shift = hr_employee.shift
+        now, logical_date, _, _ = get_current_time_and_shift(db, assigned_shift)
         attendance_record = db.query(Attendance).filter(
             Attendance.employee_id == matched_employee_id,
             Attendance.date == logical_date
