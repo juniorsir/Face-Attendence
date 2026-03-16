@@ -14,7 +14,8 @@ from app.face_utils import (
     recognize_face, 
     load_encodings_to_cache,
     add_to_cache,
-    check_duplicate_face
+    check_duplicate_face,
+    remove_face_cache
 )
 from app.attendance_logic import evaluate_entry, calculate_overtime, TZ
 # Automatically create tables if they DO NOT exist
@@ -106,27 +107,41 @@ async def register_face(
     db: Session = Depends(get_db)
 ):
     try:
+        # 1. Check if employee exists in HR Database
         hr_employee = db.query(ExistingEmployee).filter(ExistingEmployee.employee_id == employee_id).first()
         if not hr_employee:
             raise HTTPException(status_code=404, detail=f"Employee ID '{employee_id}' not found in HR system.")
-        # Get their real name from the database!
+        
         f_name = hr_employee.first_name or "Unknown"
         l_name = hr_employee.last_name or ""
-        fetched_full_name = f"{f_name} {l_name}".strip() # Combine them nicely
+        fetched_full_name = f"{f_name} {l_name}".strip() 
             
+        # 2. Check if THIS ID already has a face in the database
         existing_face = db.query(FaceRegistration).filter(FaceRegistration.employee_id == employee_id).first()
         if existing_face:
             raise HTTPException(status_code=400, detail="A face has already been registered for this Employee ID.")
+        
+        # Process new image
         image_bytes = await image.read()
         encoding = process_image_and_get_encoding(image_bytes)
 
+        # 3. Check for Duplicate Physical Faces in the Cache
         duplicate_id = check_duplicate_face(encoding)
         if duplicate_id:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Security Alert: This physical face is already registered in the system under Employee ID '{duplicate_id}'. Registration denied."
-            )
+            # CROSS-CHECK: Did an admin delete this ID from phpMyAdmin?
+            still_in_db = db.query(FaceRegistration).filter(FaceRegistration.employee_id == duplicate_id).first()
+            if not still_in_db:
+                # Yes, it was deleted from DB but stuck in RAM. Clean it up!
+                remove_from_cache(duplicate_id)
+                log_debug("API_Register", f"Cleared stale cache for manually deleted ID: {duplicate_id}")
+            else:
+                # Truly a duplicate! Block them.
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Security Alert: This physical face is already registered in the system under Employee ID '{duplicate_id}'. Registration denied."
+                )
             
+        # 4. Save to Database
         encoding_list = encoding.tolist()
         encoding_json = json.dumps(encoding_list)
 
@@ -138,6 +153,7 @@ async def register_face(
         db.add(new_face_record)
         db.commit()
 
+        # 5. Add to Cache
         add_to_cache(employee_id, encoding)
 
         return {"status": "success", "message": f"Employee {fetched_full_name} registered successfully."}
@@ -145,13 +161,11 @@ async def register_face(
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
     except HTTPException:
-        # Re-raise HTTPExceptions directly to preserve status code and detail
         raise
     except Exception as e:
-        # RETURN THE EXACT ERROR DETAIL INSTEAD OF "Internal Server Error"
-        print(f"CRASH IN /register-face: {str(e)}") # Also log it to Render console
+        print(f"CRASH IN /register-face: {str(e)}") 
         raise HTTPException(status_code=500, detail=f"System Crash: {str(e)}")
-
+        
 @app.post("/attendance/entry", response_model=SuccessResponse)
 async def mark_entry(image: UploadFile = File(...), db: Session = Depends(get_db)):
     try:
