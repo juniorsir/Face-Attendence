@@ -99,3 +99,9 @@ def check_duplicate_face(new_encoding: np.ndarray, threshold: float = 0.5) -> st
         return matched_id
     
     return None
+
+def remove_from_cache(employee_id: str):
+    """Removes a face from RAM if it was manually deleted from the database."""
+    if employee_id in ENCODINGS_CACHE:
+        del ENCODINGS_CACHE[employee_id]
+        log_debug("Face_Utils", f"Cleaned up stale cache for deleted employee: {employee_id}")
