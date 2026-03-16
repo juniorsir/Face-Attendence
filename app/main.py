@@ -30,18 +30,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Replace your current ExistingEmployee class with this one:
-# --- CHANGE THIS ---
-class ExistingEmployee(Base):
-    __tablename__ = 'employees'
-    __table_args__ = {'info': dict(is_existing=True)}
-
-    id = Column(Integer, primary_key=True)
-    employee_id = Column(String(255), unique=True)
-    first_name = Column(String(255)) # CHANGED: Pull first_name from DB
-    last_name = Column(String(255))  # CHANGED: Pull last_name from DB
-    shift = Column(String(50))       # Pull assigned shift from DB
     
 def auto_upgrade_database():
     """Automatically patches the database if older tables are missing new columns."""
