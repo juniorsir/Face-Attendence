@@ -81,3 +81,21 @@ def recognize_face(image_bytes: bytes, threshold: float = 0.5) -> str:
         return known_employee_ids[best_match_index]
     
     raise ValueError("Face does not match any registered employee.")
+
+def check_duplicate_face(new_encoding: np.ndarray, threshold: float = 0.5) -> str:
+    """Checks if a face is already registered to another employee."""
+    if not ENCODINGS_CACHE:
+        return None # Cache is empty, no duplicates possible
+        
+    known_encodings = list(ENCODINGS_CACHE.values())
+    known_ids = list(ENCODINGS_CACHE.keys())
+
+    # Compare the new face to all saved faces
+    face_distances = face_recognition.face_distance(known_encodings, new_encoding)
+    best_match_index = np.argmin(face_distances)
+
+    # If we find a match below the threshold, return the ID of who it belongs to
+    if face_distances[best_match_index] <= threshold:
+        return known_ids[best_match_index]
+    
+    return None
