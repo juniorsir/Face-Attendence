@@ -155,9 +155,13 @@ async def register_face(
 
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
+    except HTTPException:
+        # Re-raise HTTPExceptions directly to preserve status code and detail
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal Server Error")
-
+        # RETURN THE EXACT ERROR DETAIL INSTEAD OF "Internal Server Error"
+        print(f"CRASH IN /register-face: {str(e)}") # Also log it to Render console
+        raise HTTPException(status_code=500, detail=f"System Crash: {str(e)}")
 
 @app.post("/attendance/entry", response_model=SuccessResponse)
 async def mark_entry(
@@ -202,13 +206,15 @@ async def mark_entry(
             "data": {"shift": shift_type, "status": shift_status, "entry_time": str(now)}
         }
 
+    # ... inside mark_entry ...
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal Server Error")
-
+        # RETURN THE EXACT ERROR DETAIL INSTEAD OF "Internal Server Error"
+        print(f"CRASH IN /attendance/entry: {str(e)}") # Also log it to Render console
+        raise HTTPException(status_code=500, detail=f"System Crash: {str(e)}")
 
 @app.post("/attendance/exit", response_model=SuccessResponse)
 async def mark_exit(
@@ -246,13 +252,15 @@ async def mark_exit(
             "data": {"exit_time": str(now)}
         }
 
+    # ... inside mark_exit ...
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal Server Error")
-
+        # RETURN THE EXACT ERROR DETAIL INSTEAD OF "Internal Server Error"
+        print(f"CRASH IN /attendance/exit: {str(e)}") # Also log it to Render console
+        raise HTTPException(status_code=500, detail=f"System Crash: {str(e)}")
 
 @app.get("/attendance", response_model=List[AttendanceResponse])
 def get_attendance(
