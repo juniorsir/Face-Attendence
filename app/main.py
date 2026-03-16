@@ -15,7 +15,7 @@ from app.face_utils import (
     load_encodings_to_cache,
     add_to_cache,
     check_duplicate_face,
-    remove_face_cache
+    remove_from_cache
 )
 from app.attendance_logic import evaluate_entry, calculate_overtime, TZ
 # Automatically create tables if they DO NOT exist
