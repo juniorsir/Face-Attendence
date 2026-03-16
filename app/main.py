@@ -33,14 +33,16 @@ app.add_middleware(
 )
 
 # Replace your current ExistingEmployee class with this one:
+# --- CHANGE THIS ---
 class ExistingEmployee(Base):
     __tablename__ = 'employees'
     __table_args__ = {'info': dict(is_existing=True)}
 
     id = Column(Integer, primary_key=True)
     employee_id = Column(String(255), unique=True)
-    employee_name = Column(String(100)) # We pull this automatically now
-    shift = Column(String(50))          # We pull their assigned shift automatically now
+    first_name = Column(String(255)) # CHANGED: Pull first_name from DB
+    last_name = Column(String(255))  # CHANGED: Pull last_name from DB
+    shift = Column(String(50))       # Pull assigned shift from DB
     
 def auto_upgrade_database():
     """Automatically patches the database if older tables are missing new columns."""
@@ -121,14 +123,14 @@ async def register_face(
         hr_employee = db.query(ExistingEmployee).filter(ExistingEmployee.employee_id == employee_id).first()
         if not hr_employee:
             raise HTTPException(status_code=404, detail=f"Employee ID '{employee_id}' not found in HR system.")
-        
         # Get their real name from the database!
-        fetched_employee_name = hr_employee.employee_name or "Unknown Name"
+        f_name = hr_employee.first_name or "Unknown"
+        l_name = hr_employee.last_name or ""
+        fetched_full_name = f"{f_name} {l_name}".strip() # Combine them nicely
             
         existing_face = db.query(FaceRegistration).filter(FaceRegistration.employee_id == employee_id).first()
         if existing_face:
             raise HTTPException(status_code=400, detail="A face has already been registered for this Employee ID.")
-
         image_bytes = await image.read()
         encoding = process_image_and_get_encoding(image_bytes)
 
@@ -144,7 +146,7 @@ async def register_face(
 
         new_face_record = FaceRegistration(
             employee_id=employee_id,
-            employee_name=fetched_employee_name,
+            employee_name=fetched_full_name,
             face_encoding=encoding_json
         )
         db.add(new_face_record)
@@ -152,7 +154,7 @@ async def register_face(
 
         add_to_cache(employee_id, encoding)
 
-        return {"status": "success", "message": f"Employee {employee_name} registered successfully."}
+        return {"status": "success", "message": f"Employee {fetched_full_name} registered successfully."}
 
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
@@ -207,7 +209,6 @@ async def mark_entry(
             "data": {"shift": shift_type, "status": shift_status, "entry_time": str(now)}
         }
 
-    # ... inside mark_entry ...
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
     except HTTPException:
