@@ -142,7 +142,7 @@ async def mark_exit(
         matched_employee_id = recognize_face(image_bytes, threshold=0.5)
 
 
-        now, logical_date, _, _ = get_current_time_and_shift()
+        now, logical_date, shift_type, shift_status = get_current_time_and_shift(db)
 
         attendance_record = db.query(Attendance).filter(
             Attendance.employee_id == matched_employee_id,
