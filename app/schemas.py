@@ -2,6 +2,7 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import date, datetime
 
+# In schemas.py
 class AttendanceResponse(BaseModel):
     employee_id: str
     date: date
@@ -10,8 +11,8 @@ class AttendanceResponse(BaseModel):
     shift_type: str
     shift_status: str
     total_work_time: Optional[str] = None
-    overtime_minutes: int
-    overtime_hours: str
+    overtime_minutes: Optional[int] = 0     # <-- Make Optional
+    overtime_hours: Optional[str] = "0h 0m" # <-- Make Optional
 
     class Config:
         from_attributes = True
