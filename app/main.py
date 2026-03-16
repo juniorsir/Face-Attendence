@@ -4,7 +4,7 @@ from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException, sta
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import inspect, text, Column, String, Integer
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from app.logger import log_debug
 from app.database import engine, Base, get_db, SessionLocal
 from app.models import ExistingEmployee, FaceRegistration, AttendanceLog, ShiftConfig
