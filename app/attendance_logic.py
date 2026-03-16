@@ -4,7 +4,7 @@ from app.logger import log_debug
 
 TZ = pytz.timezone('Asia/Kolkata')
 
-def evaluate_entry(assigned_shift: str, shift_start: time, shift_end: time, late_grace_period: int = 15):
+def evaluate_entry(assigned_shift: str, shift_start: time, shift_end: time, late_grace_period: int = 15, absent_late_minutes: int = 120):
     now = datetime.now(TZ)
     current_time = now.time()
     
@@ -30,24 +30,25 @@ def evaluate_entry(assigned_shift: str, shift_start: time, shift_end: time, late
     minutes_diff = (now - expected_start).total_seconds() / 60.0
     log_debug("Attendance_Logic", f"Time difference from expected start: {minutes_diff:.2f} minutes")
 
-    # Dynamic wrong shift prevention: 
-    # If they log in >6 hours BEFORE their shift or >12 hours AFTER, reject them.
-    if minutes_diff < -360 or minutes_diff > 720:
-        log_debug("Attendance_Logic", "Rejected: Attempting to log in completely outside shift window.")
-        raise Exception(f"WRONG_SHIFT|{logical_date}|Attempted to check in outside of your Shift window. Marked as absent.")
-
-    # Too Early Check (<-10 mins)
+    # 1. TOO EARLY WARNING (> 10 mins early)
     if minutes_diff < -10:
         early_time_str = (expected_start - timedelta(minutes=10)).strftime("%I:%M %p")
         log_debug("Attendance_Logic", f"Rejected: Too early (<-10 mins).")
         raise Exception(f"TOO_EARLY|Too early. Please come after {early_time_str} to mark attendance.")
 
+    # 2. STATUS EVALUATION
     if minutes_diff <= 0:
+        # Arrived within the 10 min window prior to shift, or exactly on time
         shift_status = "on_time"
     elif minutes_diff <= late_grace_period:
+        # Up to 15 mins late (or whatever is in DB)
         shift_status = "late_but_full_shift"
-    else:
+    elif minutes_diff < absent_late_minutes:
+        # Between 15 mins and 2 hours late
         shift_status = "half_shift"
+    else:
+        # 3. >= 2 HOURS LATE (120 mins)
+        shift_status = "absent"
 
     log_debug("Attendance_Logic", f"Final determined status: {shift_status}")
     return now.replace(tzinfo=None), logical_date, shift_status
@@ -60,7 +61,6 @@ def calculate_overtime(assigned_shift: str, logical_date, exit_dt: datetime, shi
     
     # Calculate official end datetime dynamically
     if is_night_shift:
-        # Shift ends on the NEXT calendar day relative to the logical date
         expected_end = datetime(logical_date.year, logical_date.month, logical_date.day, shift_end.hour, shift_end.minute) + timedelta(days=1)
     else:
         expected_end = datetime(logical_date.year, logical_date.month, logical_date.day, shift_end.hour, shift_end.minute)
