@@ -6,7 +6,7 @@ TZ = pytz.timezone('Asia/Kolkata')
 # Strict Shift Definitions
 SHIFTS = {
     'Day': {'start': time(10, 0), 'end': time(18, 0)},
-    'Night': {'start': time(20, 30), 'end': time(4, 30)}
+    'Night': {'start': time(22, 30), 'end': time(4, 30)}
 }
 
 def evaluate_entry(assigned_shift: str):
