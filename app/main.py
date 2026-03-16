@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import inspect, text, Column, String, Integer
 from datetime import datetime, time
-
+from app.logger import log_debug
 from app.database import engine, Base, get_db, SessionLocal
 from app.models import ExistingEmployee, FaceRegistration, AttendanceLog, ShiftConfig
 from app.schemas import AttendanceResponse, SuccessResponse
@@ -160,8 +160,10 @@ async def mark_entry(image: UploadFile = File(...), db: Session = Depends(get_db
         matched_employee_id = recognize_face(image_bytes, threshold=0.5)
 
         # 1. Fetch & Validate Employee Status
+        log_debug("API_Entry", f"Querying HR database for ID: {matched_employee_id}")
         hr_emp = db.query(ExistingEmployee).filter(ExistingEmployee.employee_id == matched_employee_id).first()
         if not hr_emp:
+            log_debug("API_Entry", "HR DB Lookup Failed: Employee not found.")
             raise HTTPException(status_code=400, detail="Employee not found in HR system.")
         if hr_emp.employee_status != 'active':
             raise HTTPException(status_code=400, detail="Attendance Denied: Employee status is not active.")
@@ -170,6 +172,7 @@ async def mark_entry(image: UploadFile = File(...), db: Session = Depends(get_db
         if not hr_emp.shift:
             raise HTTPException(status_code=400, detail="HR Error: No shift assigned to this employee.")
 
+        log_debug("API_Entry", f"HR Data Found -> Status: {hr_emp.employee_status}, Approved: {hr_emp.is_approved}, Shift: {hr_emp.shift}")
         assigned_shift = hr_emp.shift
 
         # 2. Evaluate Strict Entry Rules
