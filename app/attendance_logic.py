@@ -4,7 +4,7 @@ from app.logger import log_debug
 
 TZ = pytz.timezone('Asia/Kolkata')
 
-def evaluate_entry(assigned_shift: str, shift_start: time, shift_end: time, late_grace_period: int = 15, absent_late_minutes: int = 120):
+def evaluate_entry(assigned_shift: str, shift_start: time, shift_end: time, late_grace_period: int = 15, absent_late_minutes: int = 240):
     now = datetime.now(TZ)
     current_time = now.time()
     
