@@ -227,6 +227,7 @@ async def mark_entry(image: UploadFile = File(...), db: Session = Depends(get_db
                     absent_log = AttendanceLog(
                         employee_id=matched_employee_id, date=wrong_date, 
                         entry_time=datetime.now(TZ).replace(tzinfo=None),
+                        exit_time=datetime(1970, 1, 1, 0, 0, 0),
                         shift_type=assigned_shift, shift_status="absent_wrong_shift"
                     )
                     db.add(absent_log)
