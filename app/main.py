@@ -31,7 +31,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-    
+
+API_KEY_NAME = "x-api-key"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=True)
+
+# Fetches the key from Render Environment Variables (defaults to 'supersecretkey' for testing)
+SECRET_API_KEY = os.getenv("API_KEY", "supersecretkey")
+
 def auto_upgrade_database():
     """Automatically patches the database if older tables are missing new columns."""
     inspector = inspect(engine)
@@ -366,3 +372,47 @@ def get_attendance(employee_id: Optional[str] = None, start_date: Optional[str] 
         })
 
     return response_data
+
+@app.get("/employees", response_model=List[EmployeeListResponse])
+def get_all_employees(
+    api_key: str = Depends(get_api_key), # <-- This protects the endpoint!
+    db: Session = Depends(get_db)
+):
+    """
+    Returns a list of all HR employees and a boolean flag 
+    indicating whether their face is registered in the system.
+    """
+    try:
+        # 1. Fetch ALL employees from the main HR database
+        hr_employees = db.query(ExistingEmployee).all()
+
+        # 2. Fetch ALL registered faces from our Face DB
+        # We only fetch the employee_id column to save memory and make it fast
+        registered_faces = db.query(FaceRegistration.employee_id).all()
+        
+        # Convert to a Python 'set' for lightning-fast lookups
+        registered_ids = {record[0] for record in registered_faces}
+
+        response_data = []
+
+        # 3. Merge the data
+        for emp in hr_employees:
+            # Skip if employee_id is missing for some reason
+            if not emp.employee_id:
+                continue
+
+            response_data.append({
+                "employee_id": emp.employee_id,
+                "first_name": emp.first_name,
+                "last_name": emp.last_name,
+                "shift": emp.shift,
+                "employee_status": emp.employee_status,
+                # True if they exist in the registered_ids set, False otherwise
+                "is_face_registered": emp.employee_id in registered_ids 
+            })
+
+        return response_data
+
+    except Exception as e:
+        print(f"CRASH IN /employees: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"System Crash: {str(e)}")
