@@ -8,7 +8,7 @@ from datetime import datetime, time, timedelta
 from app.logger import log_debug
 from app.database import engine, Base, get_db, SessionLocal
 from app.models import ExistingEmployee, FaceRegistration, AttendanceLog, ShiftConfig
-from app.schemas import AttendanceResponse, SuccessResponse
+from app.schemas import AttendanceResponse, SuccessResponse, EmployeeListResponse
 from app.face_utils import (
     process_image_and_get_encoding, 
     recognize_face, 
