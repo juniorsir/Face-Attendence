@@ -17,6 +17,17 @@ class AttendanceResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class EmployeeListResponse(BaseModel):
+    employee_id: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    shift: Optional[str] = None
+    employee_status: Optional[str] = None
+    is_face_registered: bool
+
+    class Config:
+        from_attributes = True
+        
 class SuccessResponse(BaseModel):
     status: str
     message: str
