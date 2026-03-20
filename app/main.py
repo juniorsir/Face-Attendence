@@ -61,6 +61,15 @@ def auto_upgrade_database():
                 conn.commit()
                 print("✅ Automatically added missing 'face_encoding' column to database.")
 
+def get_api_key(api_key_header: str = Security(api_key_header)):
+    """Validates the API key provided in the request headers."""
+    if api_key_header == SECRET_API_KEY:
+        return api_key_header
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN, 
+        detail="Access Denied: Invalid API Key"
+    )
+    
 @app.on_event("startup")
 def on_startup():
     # 1. Automatically fix database schemas if needed (No manual DB changes required)
