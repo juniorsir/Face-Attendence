@@ -3,6 +3,7 @@ from typing import List, Optional
 from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+from fastapi.security.api_key import APIKeyHeader
 from sqlalchemy import inspect, text, Column, String, Integer
 from datetime import datetime, time, timedelta
 from app.logger import log_debug
